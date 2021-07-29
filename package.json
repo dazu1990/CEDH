@@ -38,6 +38,7 @@
     "graphql": "^15.5.0",
     "localstorage-polyfill": "^1.0.1",
     "lodash": "^4.17.20",
+    "lunr": "^2.3.9",
     "mana-font": "^1.9.4",
     "react": "^16.12.0",
     "react-card-flip": "^1.1.1",

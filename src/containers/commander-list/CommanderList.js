@@ -1,5 +1,6 @@
 import React, {useState, useEffect}  from 'react';
 import Fuse from 'fuse.js'
+import lunr from 'lunr'
 import { withStyles } from '@material-ui/styles';
 import { Grid, FormControlLabel, Checkbox, Container, TextField, ButtonGroup, Button, Link, IconButton, Card } from '@material-ui/core';
 import KeyboardArrowUpIcon from '@material-ui/icons/KeyboardArrowUp';
@@ -7,6 +8,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import ShuffleIcon from '@material-ui/icons/Shuffle';
 import VisibilityIcon from '@material-ui/icons/Visibility';
 import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
+import AdvancedSearch from '../../components/search';
 
 
 // import Fab from '@material-ui/core/Fab';
@@ -70,6 +72,8 @@ const CommanderList = ({ classes }) => {
 
   const [inclusiveSearch, setInclusiveSearch] = useState(false);
 
+  const [advancedSearchOpen, setDrawer] = useState(false);
+
 
   const convertToSlug = (Text) =>{
     if(Text){
@@ -128,6 +132,31 @@ const CommanderList = ({ classes }) => {
     return newString;
   }
 
+  const handleMultiSearch = (options) => {
+    console.log('sarching on ', options, allWpCard);
+    let results = lunr_index.query(function (q) {
+      for (const [key, value] of Object.entries(options)) {
+        console.log(key, value, value.length);
+        if (value.length) {
+          var tokens = lunr.tokenizer(value);
+          tokens.forEach(function (token) {
+            // q.term(token.toString(), { fields: [key]})
+            q.term(token.toString(), { usePipeline: true, wildcard: lunr.Query.wildcard.TRAILING, fields: [key] }) // prefix match, no stemmer
+            q.term(token.toString(), { usePipeline: true, wildcard: lunr.Query.wildcard.LEADING, fields: [key] }) // prefix match, no stemmer
+          });
+        }
+      }
+      console.log(q);
+    });
+    console.log(results);
+    results = results.map((item)=>{
+      let fullcard = allWpCard.edges.find(obj => parseInt(obj.node.cdhCards.set.muid) === parseInt(item.ref, 10));
+      return(fullcard)
+    });
+
+    setSearchResult(results);
+  }
+
 
   const handleSearch = (event)=>{
     // this fires when text is added to field
@@ -135,9 +164,21 @@ const CommanderList = ({ classes }) => {
 
     if(event.target.value.length > 0){
       setSearchQuery(event.target.value)
-      let results = fuse.search(searchQuery);
-      results = results.map(({item})=>{
-        let fullcard = allWpCard.edges.find(obj => obj.node.cdhCards.set.muid === item.muid);
+      // let results = fuse.search(searchQuery);
+      // let results = lunr_index.search(searchQuery);
+      let results = lunr_index.query(function (q) {
+        var tokens = lunr.tokenizer(searchQuery)
+        tokens.forEach(function (token) {
+          // q.term(token.toString(), { boost: 100 }) // exact match
+          q.term(token.toString(), { usePipeline: false, wildcard: lunr.Query.wildcard.TRAILING, boost: 10 }) // prefix match, no stemmer
+          q.term(token.toString(), { usePipeline: false, wildcard: lunr.Query.wildcard.LEADING, boost: 5 }) // prefix match, no stemmer
+          q.term(token.toString(), { usePipeline: false, editDistance: 1, boost: 1 }) // fuzzy matching
+        
+        })
+      });
+      // console.log(results);
+      results = results.map((item)=>{
+        let fullcard = allWpCard.edges.find(obj => parseInt(obj.node.cdhCards.set.muid) === parseInt(item.ref, 10));
         return(fullcard)
       });
 
@@ -189,6 +230,7 @@ const CommanderList = ({ classes }) => {
     } else {
       sourceList = allWpCard.edges
     }
+    // console.log('what we find?', sourceList);
     // generate list of all "related" cards
     const getRelatedList = ()=>{
       let relatedList = sourceList.filter(({node})=>{ 
@@ -468,11 +510,24 @@ const CommanderList = ({ classes }) => {
 
   const flattenedList = allWpCard.edges.map(({node})=>{
     const flatObj = {
-      name: node.cdhCards.name,
+      coloridentity: node.cdhCards.prop.coloridentity,
       muid: node.cdhCards.set.muid,
-      coloridentity: node.cdhCards.prop.coloridentity
+      name: node.cdhCards.name,
+      text: node.cdhCards.text,
+      type: node.cdhCards.prop.type,
     };
     return flatObj;
+  });
+
+  const lunr_index = lunr(function () {
+    this.ref('muid')
+    this.field('name')
+    this.field('text')
+    this.field('type')
+  
+    flattenedList.forEach(function (doc) {
+      this.add(doc)
+    }, this)
   });
 
   const searchOptions = {
@@ -511,6 +566,12 @@ const CommanderList = ({ classes }) => {
                 variant="outlined"
               />
             </form>
+            <Button size="small" onClick={()=>setDrawer(!advancedSearchOpen)}>Advanced</Button>
+            <AdvancedSearch
+              open={advancedSearchOpen}
+              updateParent={setDrawer}
+              updateParentSearch={handleMultiSearch}
+            />  
           </Grid>
 
           <Grid item xs={12} md={1} justify="center" alignItems='center' className={classes.mobileSpacer} >
